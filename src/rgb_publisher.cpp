@@ -9,7 +9,7 @@
 #include <camera_info_manager/camera_info_manager.h>
 
 #include <dynamic_reconfigure/server.h>
-#include <depthai_examples/CameraControlConfig.h>
+#include "oak_driver/CameraControlConfig.h"
 
 // Inludes common necessary includes for development using depthai library
 #include <depthai/depthai.hpp>
@@ -111,7 +111,7 @@ dai::Pipeline createPipeline(const std::string& resolution, const std::string& c
 }
 
 
-void reconfigureCallback(depthai_examples::CameraControlConfig &config, uint32_t level){
+void reconfigureCallback(oak_driver::CameraControlConfig &config, uint32_t level){
     auto ctrl = dai::CameraControl();
     //ctrl.setCaptureStill(config.CaptureStill);
     ctrl.setAutoFocusMode((dai::CameraControl::AutoFocusMode)config.auto_focus_mode);
@@ -225,8 +225,8 @@ int main(int argc, char** argv){
     auto pubCameraInfo = pnh.advertise<sensor_msgs::CameraInfo>("camera_info", 30);
 
     // Dynamic Reconfigure Parameter
-    dynamic_reconfigure::Server<depthai_examples::CameraControlConfig> dynReconfServer;
-    dynamic_reconfigure::Server<depthai_examples::CameraControlConfig>::CallbackType dynReconfCB;
+    dynamic_reconfigure::Server<oak_driver::CameraControlConfig> dynReconfServer;
+    dynamic_reconfigure::Server<oak_driver::CameraControlConfig>::CallbackType dynReconfCB;
 
     dynReconfCB = boost::bind(&reconfigureCallback, _1, _2);
     dynReconfServer.setCallback(dynReconfCB);
