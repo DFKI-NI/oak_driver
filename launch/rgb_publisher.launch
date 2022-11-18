@@ -31,7 +31,7 @@
 
     <!-- Recom: 4K@30FPS@90%MJPEG ~ 40MB/s; 4K@24FPS@90%MJPEG ~ 30MB/s; 4K@15FPS@95%MJPEG ~ 30MB/s; 4K@15FPS@90%MJPEG ~ 16MB/s; 1080p@30FPS@95%MJPEG ~ 11.5MB/s; 1080p@30FPS@95%MJPEG ~ 6MB/s; -->
 
-    <node name="rgb_publisher" pkg="oak_driver" type="rgb_publisher" output="screen" required="true">
+    <node name="oak_rgb_publisher" pkg="oak_driver" type="oak_rgb_node" output="screen" required="true">
         <param name="tf_prefix"        value="$(arg tf_prefix)"/>
         <param name="camera_param_uri" value="$(arg camera_param_uri)"/>
         <param name="device_name"       value="" />

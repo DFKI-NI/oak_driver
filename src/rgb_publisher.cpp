@@ -163,7 +163,7 @@ void reconfigureCallback(oak_driver::CameraControlConfig &config, uint32_t level
 
 int main(int argc, char** argv){
 
-    ros::init(argc, argv, "rgb_encoded_node");
+    ros::init(argc, argv, "rgb_node");
     ros::NodeHandle pnh("~");
     
     std::string tfPrefix;
