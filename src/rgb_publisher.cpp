@@ -31,6 +31,7 @@ dai::Pipeline createPipeline(const std::string& resolution, const std::string& c
 
 
     // Configure Camera
+    // Note: IMX378/214, needs 1080_P / 4_K / 12_MP. Defaulting to 1080_P
     dai::ColorCameraProperties::SensorResolution colorResolution;
     if(resolution == "720p"){
         colorResolution = dai::ColorCameraProperties::SensorResolution::THE_720_P; 
@@ -80,6 +81,8 @@ dai::Pipeline createPipeline(const std::string& resolution, const std::string& c
     }
 
     videoEnc->setDefaultProfilePreset(fps, encoderProfile);
+    videoEnc->setNumBFrames(0);
+    videoEnc->setKeyframeFrequency(fps/2);  // every 1/2sec
     ROS_INFO("Codec: %i", static_cast<int>(encoderProfile));
 
     videoEnc->setQuality(quality);
@@ -240,7 +243,7 @@ int main(int argc, char** argv){
         outImageMsg.header.stamp = dai::ros::getFrameTime(ros::Time::now(), std::chrono::steady_clock::now(), imgPacket->getTimestamp());
         outImageMsg.header.seq = seq++;
         outImageMsg.header.frame_id = tfPrefix;
-        outImageMsg.format = "jpeg";    //ToDo: depends on codec parameter
+        outImageMsg.format = codec == "MJPEG" ? "jpeg" : "h26x";
 
         outImageMsg.data = imgPacket->getData();
 

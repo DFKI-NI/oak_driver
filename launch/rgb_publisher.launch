@@ -35,10 +35,12 @@
         <param name="tf_prefix"        value="$(arg tf_prefix)"/>
         <param name="camera_param_uri" value="$(arg camera_param_uri)"/>
         <param name="device_name"       value="" />
-        <param name="resolution"        value="4K" />
-        <param name="fps"               value="15" />
+        <param name="resolution"        value="720p" />
+        <param name="fps"               value="30" />
         <param name="quality"           value="85" />
         <param name="codec"             value="MJPEG" />
+        <param name="manual_focus"      value="125" />
+        <param name="auto_white_balance_mode"      value="6" />
     </node>            
        
 
