@@ -91,7 +91,8 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     stereo->setLeftRightCheck(true);                                                                     //ToDo: As Parameter!
     stereo->setExtendedDisparity(true);                                                                 //ToDo: As Parameter!
     stereo->setSubpixel(false);                                                                          //ToDo: As Parameter!
-    depth_aligned ? stereo->setDepthAlign(dai::CameraBoardSocket::RGB) : ;    // Always in depth (not disparity) mode!
+    if (depth_aligned)
+        stereo->setDepthAlign(dai::CameraBoardSocket::RGB);   // Always in depth (not disparity) mode!
 
     // Imu
     imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW, 500);
@@ -116,7 +117,7 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     }else if(rgbResolution == "13MP" ){
         colorResolution = dai::ColorCameraProperties::SensorResolution::THE_13_MP; 
     }else{
-        ROS_ERROR("Invalid parameter. -> Resolution: %s, Use Default: 4K", resolution.c_str());
+        ROS_ERROR("Invalid parameter. -> Resolution: %s, Use Default: 4K", rgbResolution.c_str());
         //throw std::runtime_error("Invalid color camera resolution.");
         colorResolution = dai::ColorCameraProperties::SensorResolution::THE_4_K;
     }
@@ -306,7 +307,8 @@ int main(int argc, char** argv){
     std::string tfPrefix;
     std::string camera_param_uri;
     std::string device_name;
-    std::string resolution;
+    std::string rgbResolution;
+    std::string stereoResolution;
     std::string codec;
 
     float fps;
@@ -400,6 +402,7 @@ int main(int argc, char** argv){
     ROS_INFO("Start data stream!" );
 
     // IMU
+    /*
     dai::rosBridge::ImuConverter imuConverter(tfPrefix + "_imu_frame", imuMode, linearAccelCovariance, angularVelCovariance);
 
     dai::rosBridge::BridgePublisher<sensor_msgs::Imu, dai::IMUData> imuPublish(
@@ -410,14 +413,16 @@ int main(int argc, char** argv){
         30,
         "",
         "imu");
+        
 
     imuPublish.addPublisherCallback();
+    */
 
     // RGB
     dai::rosBridge::ImageConverter rgbConverter(tfPrefix + "_rgb_camera_optical_frame", false);
     auto rgbCameraInfo = rgbConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RGB, width, height);
     auto imgQueue = device->getOutputQueue("rgb", 30, false);
-    dai::rosBridge::BridgePublisher<sensor_msgs::Image, dai::ImgFrame> rgbPublish(
+    dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> rgbPublish(
         imgQueue,
         pnh,
         std::string("color/compressed"),
@@ -435,8 +440,8 @@ int main(int argc, char** argv){
     auto depthCameraInfo = depth_aligned ? rgbConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RGB, width, height) : rightCameraInfo;
 
     auto depthconverter = depth_aligned ? rgbConverter : rightConverter;
-    dai::rosBridge::BridgePublisher<sensor_msgs::Image, dai::ImgFrame> depthPublish(
-        stereoQueue,
+    dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> depthPublish(
+        depthQueue,
         pnh,
         std::string("stereo/depth"),
         std::bind(&dai::rosBridge::ImageConverter::toComprRosMsg,
@@ -452,12 +457,12 @@ int main(int argc, char** argv){
 
     // Mono Stereo Pair
     if (out_LR) {
-        auto leftCameraInfo = converter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::LEFT, width, height);
-        auto rightCameraInfo = converter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RIGHT, width, height);
+        auto leftCameraInfo = leftConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::LEFT, width, height);
+        auto rightCameraInfo = leftConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RIGHT, width, height);
 
         auto leftQueue = device->getOutputQueue("left", 30, false);
         auto rightQueue = device->getOutputQueue("right", 30, false);
-        dai::rosBridge::BridgePublisher<sensor_msgs::Image, dai::ImgFrame> leftPublish(
+        dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> leftPublish(
             leftQueue,
             pnh,
             leftPubName,
@@ -465,7 +470,7 @@ int main(int argc, char** argv){
             30,
             leftCameraInfo,
             "left");
-        dai::rosBridge::BridgePublisher<sensor_msgs::Image, dai::ImgFrame> rightPublish(
+        dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> rightPublish(
             rightQueue,
             pnh,
             rightPubName,
