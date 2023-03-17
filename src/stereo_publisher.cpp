@@ -37,7 +37,7 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     auto encRGB = pipeline.create<dai::node::VideoEncoder>();
     auto encLeft = pipeline.create<dai::node::VideoEncoder>();
     auto encRight = pipeline.create<dai::node::VideoEncoder>();
-    auto encDepth = pipeline.create<dai::node::VideoEncoder>();
+    //auto encDepth = pipeline.create<dai::node::VideoEncoder>();
 
     // Output
     auto xoutRGB = pipeline.create<dai::node::XLinkOut>();
@@ -45,6 +45,242 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     auto xoutDepth = pipeline.create<dai::node::XLinkOut>();
     auto xoutLeft = pipeline.create<dai::node::XLinkOut>();
     auto xoutRight = pipeline.create<dai::node::XLinkOut>();
+    
+    // Config and Control
+    auto configIn = pipeline.create<dai::node::XLinkIn>();
+    auto controlIn = pipeline.create<dai::node::XLinkIn>();
+
+
+    // Stereo pair resolution
+    float stereo_fps = fps;
+    dai::node::MonoCamera::Properties::SensorResolution monoResolution;
+    int stereoWidth, stereoHeight, rgbWidth, rgbHeight;
+    if(stereoResolution == "720p") {
+        monoResolution = dai::node::MonoCamera::Properties::SensorResolution::THE_720_P;
+        stereoWidth = 1280;
+        stereoHeight = 720;
+    } else if(stereoResolution == "400p") {
+        monoResolution = dai::node::MonoCamera::Properties::SensorResolution::THE_400_P;
+        stereoWidth = 640;
+        stereoHeight = 400;
+    } else if(stereoResolution == "800p") {
+        monoResolution = dai::node::MonoCamera::Properties::SensorResolution::THE_800_P;
+        stereoWidth = 1280;
+        stereoHeight = 800;
+    } else if(stereoResolution == "480p") {
+        monoResolution = dai::node::MonoCamera::Properties::SensorResolution::THE_480_P;
+        stereoWidth = 640;
+        stereoHeight = 480;
+    } else {
+        ROS_ERROR("Invalid parameter. -> monoResolution: %s", stereoResolution.c_str());
+        throw std::runtime_error("Invalid mono camera resolution.");
+    }
+
+    // MonoCamera
+    monoLeft->setResolution(monoResolution);
+    monoLeft->setBoardSocket(dai::CameraBoardSocket::LEFT);
+    monoLeft->setFps(stereo_fps);
+    monoRight->setResolution(monoResolution);
+    monoRight->setBoardSocket(dai::CameraBoardSocket::RIGHT);
+    monoRight->setFps(stereo_fps);
+
+    // StereoDepth
+    stereo->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
+    stereo->initialConfig.setConfidenceThreshold(200);        // Known to be best                           //ToDo: As Parameter!
+    stereo->setRectifyEdgeFillColor(0);                              // black, to better see the cutout
+    stereo->initialConfig.setLeftRightCheckThreshold(5);    // Known to be best                             //ToDo: As Parameter!
+    stereo->setLeftRightCheck(true);                                                                     //ToDo: As Parameter!
+    stereo->setExtendedDisparity(true);                                                                 //ToDo: As Parameter!
+    stereo->setSubpixel(false);                                                                          //ToDo: As Parameter!
+    if (depth_aligned)
+        stereo->setDepthAlign(dai::CameraBoardSocket::RGB);   // Always in depth (not disparity) mode!
+
+    // Imu
+    imu->enableIMUSensor(dai::IMUSensor::ACCELEROMETER_RAW, 500);       //ToDo: As Parameter!
+    imu->enableIMUSensor(dai::IMUSensor::GYROSCOPE_RAW, 400);           //ToDo: As Parameter!
+    imu->setBatchReportThreshold(5);
+    imu->setMaxBatchReports(20);  // Get one message only for now.
+
+
+    // Configure Camera
+    // Note: IMX378/214, needs 1080_P / 4_K / 12_MP. Defaulting to 1080_P
+    dai::ColorCameraProperties::SensorResolution colorResolution;
+    if(rgbResolution == "720p"){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_720_P; 
+    }else if(rgbResolution == "1080p" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_1080_P; 
+    }else if(rgbResolution == "800p" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_800_P; 
+    }else if(rgbResolution == "4K" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_4_K; 
+    }else if(rgbResolution == "12MP" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_12_MP; 
+    }else if(rgbResolution == "13MP" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_13_MP; 
+    }else{
+        ROS_ERROR("Invalid parameter. -> Resolution: %s, Use Default: 4K", rgbResolution.c_str());
+        //throw std::runtime_error("Invalid color camera resolution.");
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_4_K;
+    }
+
+    colorCam->setBoardSocket(dai::CameraBoardSocket::RGB);
+    //colorCam->setPreviewSize(300, 300);
+    colorCam->setResolution(colorResolution);
+    colorCam->setFps(fps);
+    colorCam->setInterleaved(false);
+
+    if(depth_aligned) {
+        float rgbScaleNumerator = 2;        //ToDo: As Parameter!
+        float rgbScaleDinominator = 3;      //ToDo: As Parameter!
+
+        rgbWidth = rgbWidth * rgbScaleNumerator / rgbScaleDinominator;
+        rgbHeight = rgbHeight * rgbScaleNumerator / rgbScaleDinominator;
+        colorCam->setIspScale(rgbScaleNumerator, rgbScaleDinominator);
+
+        colorCam->isp.link(encRGB->input);
+
+        /* TODO:
+        // For now, RGB needs fixed focus to properly align with depth.
+        // This value was used during calibration
+        try {
+            auto calibData = device.readCalibration2();
+            auto lensPosition = calibData.getLensPosition(dai::CameraBoardSocket::RGB);
+            if(lensPosition) {
+                camRgb->initialControl.setManualFocus(lensPosition);
+            }
+        } catch(const std::exception& ex) {
+            std::cout << ex.what() << std::endl;
+            return 1;
+        }
+        */
+
+        if(rgbWidth  % 16 != 0) {
+            ROS_ERROR_STREAM("RGB Camera width should be multiple of 16. Please choose a different scaling factor.");
+            throw std::runtime_error("Adjust RGB Camaera scaling.");
+        }
+
+        if(rgbWidth > stereoWidth || rgbHeight > stereoHeight) {
+            ROS_WARN_STREAM(
+                "RGB Camera resolution is heigher than the configured stereo resolution. Upscaling the stereo depth/disparity to match RGB camera resolution.");
+        } else if(rgbWidth > stereoWidth || rgbHeight > stereoHeight) {
+            ROS_WARN_STREAM(
+                "RGB Camera resolution is heigher than the configured stereo resolution. Downscaling the stereo depth/disparity to match RGB camera resolution.");
+        }
+    }
+
+    ROS_INFO("Resolution: %i", static_cast<int>(colorResolution));
+    ROS_INFO("FPS: %i", static_cast<int>(fps));
+
+    //ToDo: Add support for no encoding /raw
+
+    // Configure Codec
+    dai::VideoEncoderProperties::Profile encoderProfile;
+    if(codec == "H264_BASELINE"){
+        encoderProfile = dai::VideoEncoderProperties::Profile::H264_BASELINE; 
+    }else if(codec == "H264_HIGH" ){
+        encoderProfile = dai::VideoEncoderProperties::Profile::H264_HIGH; 
+    }else if(codec == "H264_MAIN" ){
+        encoderProfile = dai::VideoEncoderProperties::Profile::H264_MAIN; 
+    }else if(codec == "H265_MAIN" ){
+        encoderProfile = dai::VideoEncoderProperties::Profile::H265_MAIN; 
+    }else if(codec == "MJPEG" ){
+        encoderProfile = dai::VideoEncoderProperties::Profile::MJPEG; 
+    }else{
+        ROS_ERROR("Invalid parameter. -> Codec: %s, Use Default: MJPEG", codec.c_str());
+        //throw std::runtime_error("Invalid color camera codec.");
+        encoderProfile = dai::VideoEncoderProperties::Profile::MJPEG; 
+    }
+
+    encRGB->setDefaultProfilePreset(fps, encoderProfile);
+    encLeft->setDefaultProfilePreset(fps, encoderProfile);
+    encRight->setDefaultProfilePreset(fps, encoderProfile);
+    //encDepth->setDefaultProfilePreset(fps, encoderProfile);
+    //encRGB->setNumBFrames(0);
+    //encRGB->setKeyframeFrequency(fps/2);  // every 1/2sec
+    ROS_INFO("Codec: %i", static_cast<int>(encoderProfile));
+
+    encRGB->setQuality(quality);
+    encLeft->setQuality(quality);
+    encRight->setQuality(quality);
+    //encDepth->setQuality(quality);
+    if (encoderProfile == dai::VideoEncoderProperties::Profile::MJPEG && quality >= 100)
+    {
+        // Issue with preview loseless images in ROS-RVIZ!
+        encRGB->setLossless(true);
+        encRGB->setQuality(100);
+        //ToDo: also for other encoders
+    }
+    ROS_INFO("Quality: %i", quality);
+
+    //encRGB->setFrameRate(fps);
+
+
+    // Configure and Control Input
+    configIn->setStreamName("config");
+    configIn->out.link(colorCam->inputConfig);
+    
+    controlIn->setStreamName("control");
+    controlIn->out.link(colorCam->inputControl);
+    //ToDo: Camera control currently only for RGB!
+    
+
+    // Link plugins CAM -> Encoder-> XLINK
+    colorCam->video.link(encRGB->input);
+    encRGB->bitstream.link(xoutRGB->input);
+    
+
+    // Link plugins CAM -> STEREO -> Encoder-> XLINK
+    stereo->setRectifyEdgeFillColor(0);
+    monoLeft->out.link(stereo->left);
+    monoRight->out.link(stereo->right);
+    stereo->depth.link(xoutDepth->input); //direct link for no encoding
+    //stereo->depth.link(encDepth->input);
+    //encDepth->bitstream.link(xoutDepth->input);
+
+    // Link stereo
+    if(outLR) {
+        if(rectify) {
+            stereo->rectifiedLeft.link(encLeft->input);
+            stereo->rectifiedRight.link(encRight->input);
+        } else {
+            stereo->syncedLeft.link(encLeft->input);
+            stereo->syncedRight.link(encRight->input);
+        }
+        encLeft->bitstream.link(xoutLeft->input);
+        encRight->bitstream.link(xoutRight->input);
+    }
+    
+    // Link IMU to output
+    imu->out.link(xoutImu->input);
+
+    // Configure Output
+    xoutRGB->setStreamName("rgb");
+    xoutDepth->setStreamName("depth");
+    xoutImu->setStreamName("imu");
+    xoutLeft->setStreamName("left");
+    xoutRight->setStreamName("right");
+
+    return std::make_tuple(pipeline, stereoWidth, stereoHeight);
+
+}
+
+std::tuple<dai::Pipeline, int, int>  createPipeline_test(const std::string& rgbResolution, const std::string& stereoResolution, const std::string& codec, const float fps = 30, const int quality = 90, bool depth_aligned = true, bool outLR = false, bool rectify = true){
+    dai::Pipeline pipeline;
+
+    // Sensors
+    auto monoLeft = pipeline.create<dai::node::MonoCamera>();
+    auto monoRight = pipeline.create<dai::node::MonoCamera>();
+    auto colorCam = pipeline.create<dai::node::ColorCamera>();
+    auto imu = pipeline.create<dai::node::IMU>();
+
+    // Processing
+    auto stereo = pipeline.create<dai::node::StereoDepth>();
+    auto encRGB = pipeline.create<dai::node::VideoEncoder>();
+
+    // Output
+    auto xoutRGB = pipeline.create<dai::node::XLinkOut>();
+    auto xoutImu = pipeline.create<dai::node::XLinkOut>();
+    auto xoutDepth = pipeline.create<dai::node::XLinkOut>();
     
     // Config and Control
     auto configIn = pipeline.create<dai::node::XLinkIn>();
@@ -136,6 +372,8 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
         rgbHeight = rgbHeight * rgbScaleNumerator / rgbScaleDinominator;
         colorCam->setIspScale(rgbScaleNumerator, rgbScaleDinominator);
 
+        colorCam->isp.link(encRGB->input);
+
         if(rgbWidth  % 16 != 0) {
             ROS_ERROR_STREAM("RGB Camera width should be multiple of 16. Please choose a different scaling factor.");
             throw std::runtime_error("Adjust RGB Camaera scaling.");
@@ -174,17 +412,17 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     }
 
     encRGB->setDefaultProfilePreset(fps, encoderProfile);
-    encLeft->setDefaultProfilePreset(fps, encoderProfile);
-    encRight->setDefaultProfilePreset(fps, encoderProfile);
-    encDepth->setDefaultProfilePreset(fps, encoderProfile);
+    //encLeft->setDefaultProfilePreset(fps, encoderProfile);
+    //encRight->setDefaultProfilePreset(fps, encoderProfile);
+    //encDepth->setDefaultProfilePreset(fps, encoderProfile);
     //encRGB->setNumBFrames(0);
     //encRGB->setKeyframeFrequency(fps/2);  // every 1/2sec
     ROS_INFO("Codec: %i", static_cast<int>(encoderProfile));
 
     encRGB->setQuality(quality);
-    encLeft->setQuality(quality);
-    encRight->setQuality(quality);
-    encDepth->setQuality(quality);
+    //encLeft->setQuality(quality);
+    //encRight->setQuality(quality);
+    //encDepth->setQuality(quality);
     if (encoderProfile == dai::VideoEncoderProperties::Profile::MJPEG && quality >= 100)
     {
         // Issue with preview loseless images in ROS-RVIZ!
@@ -207,7 +445,8 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     
 
     // Link plugins CAM -> Encoder-> XLINK
-    depth_aligned ? colorCam->isp.link(encRGB->input) : colorCam->video.link(encRGB->input);
+    //depth_aligned ? colorCam->isp.link(encRGB->input) : colorCam->video.link(encRGB->input);
+    colorCam->video.link(encRGB->input);
     encRGB->bitstream.link(xoutRGB->input);
     
 
@@ -215,10 +454,12 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     stereo->setRectifyEdgeFillColor(0);
     monoLeft->out.link(stereo->left);
     monoRight->out.link(stereo->right);
-    //stereo->depth.link(xoutDepth->input); //direct link for no encoding
-    stereo->depth.link(encDepth->input);
-    encDepth->bitstream.link(xoutDepth->input);
+    ////stereo->depth.link(xoutDepth->input); //direct link for no encoding
+    //stereo->depth.link(encDepth->input);
+    //encDepth->bitstream.link(xoutDepth->input);
+    stereo->depth.link(xoutDepth->input);
 
+    /*
     // Link stereo
     if(outLR) {
         if(rectify) {
@@ -231,6 +472,7 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
         encLeft->bitstream.link(xoutLeft->input);
         encRight->bitstream.link(xoutRight->input);
     }
+    */
     
     // Link IMU to output
     imu->out.link(xoutImu->input);
@@ -239,12 +481,10 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     xoutRGB->setStreamName("rgb");
     xoutDepth->setStreamName("depth");
     xoutImu->setStreamName("imu");
-    if(outLR) {
-        xoutLeft->setStreamName("left");
-        xoutRight->setStreamName("right");
-    }
+    //xoutLeft->setStreamName("left");
+    //xoutRight->setStreamName("right");
 
-    return std::make_tuple(pipeline, stereoWidth, stereoHeight);
+    return std::make_tuple(pipeline, 0, 0);
 
 }
 
@@ -334,7 +574,7 @@ int main(int argc, char** argv){
 
     pnh.param<float>("fps", fps, 30);
     pnh.param<int>("quality", quality, 90);
-    pnh.param<bool>("depth_aligned", depth_aligned, true);
+    pnh.param<bool>("depth_aligned", depth_aligned, false);
     pnh.param<bool>("out_LR", out_LR, false);
     pnh.param<bool>("rectify", rectify, true);
 
@@ -440,11 +680,11 @@ int main(int argc, char** argv){
     auto depthCameraInfo = depth_aligned ? rgbConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RGB, width, height) : rightCameraInfo;
 
     auto depthconverter = depth_aligned ? rgbConverter : rightConverter;
-    dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> depthPublish(
+    dai::rosBridge::BridgePublisher<sensor_msgs::Image, dai::ImgFrame> depthPublish(
         depthQueue,
         pnh,
         std::string("stereo/depth"),
-        std::bind(&dai::rosBridge::ImageConverter::toComprRosMsg,
+        std::bind(&dai::rosBridge::ImageConverter::toRosMsg,
                     &depthconverter,  // since the converter has the same frame name
                                     // and image type is also same we can reuse it
                     std::placeholders::_1,
