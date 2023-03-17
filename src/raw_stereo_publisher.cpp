@@ -25,19 +25,16 @@
 static std::shared_ptr<dai::DataInputQueue> configQueue = nullptr;
 static std::shared_ptr<dai::DataInputQueue> controlQueue = nullptr;
 
-std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolution, const std::string& stereoResolution, const std::string& codec, const float fps = 30, const int quality = 90, bool disparity = true, bool rectify = true){
+std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolution, const std::string& stereoResolution, const std::string& codec, const float fps = 30, const int quality = 90){
     dai::Pipeline pipeline;
 
-    if (!disparity)
-        rectify = false;
+    // ToDo: Add support for compessed disparity!
 
     // Sensors
     auto monoLeft = pipeline.create<dai::node::MonoCamera>();
     auto monoRight = pipeline.create<dai::node::MonoCamera>();
     auto colorCam = pipeline.create<dai::node::ColorCamera>();
     auto imu = pipeline.create<dai::node::IMU>();
-
-    //auto stereo = pipeline.create<dai::node::StereoDepth>();
 
     // Encoding
     auto encLeft = pipeline.create<dai::node::VideoEncoder>();
@@ -49,8 +46,6 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     auto xoutRight = pipeline.create<dai::node::XLinkOut>();
     auto xoutRGB = pipeline.create<dai::node::XLinkOut>();
     auto xoutImu = pipeline.create<dai::node::XLinkOut>();
-
-    //auto xoutDisp = pipeline.create<dai::node::XLinkOut>();
     
     // Config and Control
     auto configIn = pipeline.create<dai::node::XLinkIn>();
@@ -91,19 +86,6 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     monoRight->setFps(stereo_fps);
 
     ROS_INFO("Mono Resolution: %i", static_cast<int>(monoResolution));
-
-    // StereoDepth
-    /*
-    if (disparity) {
-        stereo->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::HIGH_DENSITY);
-        stereo->initialConfig.setConfidenceThreshold(200);        // Known to be best                           //ToDo: As Parameter!
-        stereo->setRectifyEdgeFillColor(0);                              // black, to better see the cutout
-        stereo->initialConfig.setLeftRightCheckThreshold(5);    // Known to be best                             //ToDo: As Parameter!
-        stereo->setLeftRightCheck(true);                                                                     //ToDo: As Parameter!
-        stereo->setExtendedDisparity(true);                                                                 //ToDo: As Parameter!
-        stereo->setSubpixel(false);                                                                          //ToDo: As Parameter!
-    }
-    */
 
     // Configure Camera
     // Note: IMX378/214, needs 1080_P / 4_K / 12_MP. Defaulting to 1080_P
@@ -174,7 +156,6 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
 
     ROS_INFO("Quality: %i", quality);
 
-    //encRGB->setFrameRate(fps);
 
 
     // Configure and Control Input
@@ -185,27 +166,10 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     controlIn->out.link(colorCam->inputControl);
     //ToDo: Camera control currently only for RGB currently!
     
-/*
-    stereo->setRectifyEdgeFillColor(0);
-    monoLeft->out.link(stereo->left);
-    monoRight->out.link(stereo->right);
-    stereo->disparity.link(xoutDisp->input);
-*/
 
     // Link plugins CAM -> Encoder-> XLINK
     monoLeft->out.link(encLeft->input);
     monoRight->out.link(encRight->input);
-
-/*
-    if(rectify) {
-        stereo->rectifiedLeft.link(encLeft->input);
-        stereo->rectifiedRight.link(encRight->input);
-    } else {
-        stereo->syncedLeft.link(encLeft->input);
-        stereo->syncedRight.link(encRight->input);
-    }
-*/
-
 
     encLeft->bitstream.link(xoutLeft->input);
     encRight->bitstream.link(xoutRight->input);
@@ -222,8 +186,6 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     xoutRight->setStreamName("right");
     xoutRGB->setStreamName("rgb");
     xoutImu->setStreamName("imu");
-
-    //xoutDisp->setStreamName("disp");
     
 
     return std::make_tuple(pipeline, stereoWidth, stereoHeight);
@@ -327,7 +289,7 @@ int main(int argc, char** argv){
     // Create pipeline
     dai::Pipeline pipeline;
     int width, height;
-    std::tie(pipeline, width, height) = createPipeline(rgbResolution, stereoResolution, codec, fps, quality, disparity, rectify);
+    std::tie(pipeline, width, height) = createPipeline(rgbResolution, stereoResolution, codec, fps, quality);
 
     // Connect to device and start pipeline
     std::shared_ptr<dai::Device> device = nullptr;
@@ -386,8 +348,10 @@ int main(int argc, char** argv){
 
     ROS_INFO("Start data stream!" );
 
-    // IMU
+    // IMU <- ToDo
     /*
+    dai::ros::ImuSyncMethod imuMode = static_cast<dai::ros::ImuSyncMethod>(imuModeParam);
+    double angularVelCovariance, linearAccelCovariance;
     dai::rosBridge::ImuConverter imuConverter(tfPrefix + "_imu_frame", imuMode, linearAccelCovariance, angularVelCovariance);
 
     dai::rosBridge::BridgePublisher<sensor_msgs::Imu, dai::IMUData> imuPublish(
@@ -397,11 +361,13 @@ int main(int argc, char** argv){
         std::bind(&dai::rosBridge::ImuConverter::toRosMsg, &imuConverter, std::placeholders::_1, std::placeholders::_2),
         30,
         "",
-        "imu");
-        
+        "imu");     
 
     imuPublish.addPublisherCallback();
+
     */
+
+    // ToDo: Also publish Camera Infos for compressed Images and not only Images!
 
     // RGB
     dai::rosBridge::ImageConverter rgbConverter(tfPrefix + "_rgb_camera_optical_frame", false);
@@ -416,26 +382,6 @@ int main(int argc, char** argv){
         rgbCameraInfo,
         "color");
     rgbPublish.addPublisherCallback();
-
-    // Depth
-    /*
-    if (disparity)  // about 30MB/s at 400p@30Hz uncompressed
-    {
-        dai::rosBridge::DisparityConverter dispConverter(tfPrefix + "_right_camera_optical_frame", 880, 7.5, 20, 2000);  // TODO(sachin): undo hardcoding of baseline
-
-        auto disparityCameraInfo = leftConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RIGHT, width, height);
-        auto depthconverter = rightConverter;
-        dai::rosBridge::BridgePublisher<stereo_msgs::DisparityImage, dai::ImgFrame> dispPublish(
-            dispQueue,
-            pnh,
-            std::string("stereo/disparity"),
-            std::bind(&dai::rosBridge::DisparityConverter::toRosMsg, &dispConverter, std::placeholders::_1, std::placeholders::_2),
-            30,
-            disparityCameraInfo,
-            "stereo");
-        dispPublish.addPublisherCallback();
-    }
-    */
 
 
     // Mono Stereo Pair
