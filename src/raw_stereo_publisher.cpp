@@ -373,6 +373,10 @@ int main(int argc, char** argv){
     dai::rosBridge::ImageConverter rgbConverter(tfPrefix + "_rgb_camera_optical_frame", false);
     auto rgbCameraInfo = rgbConverter.calibrationToCameraInfo(calibrationHandler, dai::CameraBoardSocket::RGB, width, height);
     auto imgQueue = device->getOutputQueue("rgb", 30, false);
+
+    auto pub_ImgCompr = pnh.advertise<sensor_msgs::CompressedImage>("color/compressed", 30);
+    auto pub_ImgCameraInfo = pnh.advertise<sensor_msgs::CameraInfo>("color/camera_info", 30);
+    /*
     dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> rgbPublish(
         imgQueue,
         pnh,
@@ -380,8 +384,9 @@ int main(int argc, char** argv){
         std::bind(&dai::rosBridge::ImageConverter::toComprRosMsg, &rgbConverter, std::placeholders::_1, std::placeholders::_2),
         30,
         rgbCameraInfo,
-        "color");
+        "color", "mjpeg");
     rgbPublish.addPublisherCallback();
+    */
 
 
     // Mono Stereo Pair
@@ -390,6 +395,13 @@ int main(int argc, char** argv){
 
     auto leftQueue = device->getOutputQueue("left", 30, false);
     auto rightQueue = device->getOutputQueue("right", 30, false);
+
+    auto pub_leftCompr = pnh.advertise<sensor_msgs::CompressedImage>(leftPubName, 30);
+    auto pub_leftCameraInfo = pnh.advertise<sensor_msgs::CameraInfo>("left/camera_info", 30);
+
+    auto pub_rightCompr = pnh.advertise<sensor_msgs::CompressedImage>(rightPubName, 30);
+    auto pub_rightCameraInfo = pnh.advertise<sensor_msgs::CameraInfo>("right/camera_info", 30);
+    /*
     dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> leftPublish(
         leftQueue,
         pnh,
@@ -397,7 +409,7 @@ int main(int argc, char** argv){
         std::bind(&dai::rosBridge::ImageConverter::toComprRosMsg, &leftConverter, std::placeholders::_1, std::placeholders::_2),
         30,
         leftCameraInfo,
-        "left");
+        "left", "mjpeg");
     dai::rosBridge::BridgePublisher<sensor_msgs::CompressedImage, dai::ImgFrame> rightPublish(
         rightQueue,
         pnh,
@@ -405,9 +417,87 @@ int main(int argc, char** argv){
         std::bind(&dai::rosBridge::ImageConverter::toComprRosMsg, &rightConverter, std::placeholders::_1, std::placeholders::_2),
         30,
         rightCameraInfo,
-        "right");
+        "right", "mjpeg");
     rightPublish.addPublisherCallback();
     leftPublish.addPublisherCallback();
+    */
+
+    int seq = 0;
+    while(pnh.ok()) {
+
+        {   //RGB
+            auto imgPacket = imgQueue->get<dai::ImgFrame>();
+
+            sensor_msgs::CompressedImage outImgMsg;
+
+            outImgMsg.header.stamp = dai::ros::getFrameTime(ros::Time::now(), std::chrono::steady_clock::now(), imgPacket->getTimestamp());
+            outImgMsg.header.seq = seq;
+            outImgMsg.header.frame_id = tfPrefix + "_rgb_camera_optical_frame";
+            outImgMsg.format = codec == "MJPEG" ? "jpeg" : "h26x";
+
+            outImgMsg.data = imgPacket->getData();
+
+            pub_ImgCompr.publish(outImgMsg);
+
+
+            auto camInfo = rgbCameraInfo;
+            camInfo.header.stamp = outImgMsg.header.stamp;
+            camInfo.header.seq = outImgMsg.header.seq;
+            camInfo.header.frame_id = outImgMsg.header.frame_id;
+
+            pub_ImgCameraInfo.publish(camInfo);
+        }
+
+        {   // Left
+            auto imgPacket = leftQueue->get<dai::ImgFrame>();
+
+            sensor_msgs::CompressedImage outImgMsg;
+
+            outImgMsg.header.stamp = dai::ros::getFrameTime(ros::Time::now(), std::chrono::steady_clock::now(), imgPacket->getTimestamp());
+            outImgMsg.header.seq = seq;
+            outImgMsg.header.frame_id = tfPrefix + "_left_camera_optical_frame";
+            outImgMsg.format = codec == "MJPEG" ? "jpeg" : "h26x";
+
+            outImgMsg.data = imgPacket->getData();
+
+            pub_leftCompr.publish(outImgMsg);
+
+
+            auto camInfo = leftCameraInfo;
+            camInfo.header.stamp = outImgMsg.header.stamp;
+            camInfo.header.seq = outImgMsg.header.seq;
+            camInfo.header.frame_id = outImgMsg.header.frame_id;
+
+            pub_leftCameraInfo.publish(camInfo);
+        }
+
+        {   // Right
+            auto imgPacket = rightQueue->get<dai::ImgFrame>();
+
+            sensor_msgs::CompressedImage outImgMsg;
+
+            outImgMsg.header.stamp = dai::ros::getFrameTime(ros::Time::now(), std::chrono::steady_clock::now(), imgPacket->getTimestamp());
+            outImgMsg.header.seq = seq;
+            outImgMsg.header.frame_id = tfPrefix + "_right_camera_optical_frame";
+            outImgMsg.format = codec == "MJPEG" ? "jpeg" : "h26x";
+
+            outImgMsg.data = imgPacket->getData();
+
+            pub_rightCompr.publish(outImgMsg);
+
+
+            auto camInfo = rgbCameraInfo;
+            camInfo.header.stamp = outImgMsg.header.stamp;
+            camInfo.header.seq = outImgMsg.header.seq;
+            camInfo.header.frame_id = outImgMsg.header.frame_id;
+
+            pub_rightCameraInfo.publish(camInfo);
+        }
+
+        seq++;
+        ros::spinOnce();
+
+    }
 
 
     ros::spin();
