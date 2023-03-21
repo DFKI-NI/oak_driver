@@ -25,7 +25,19 @@
 static std::shared_ptr<dai::DataInputQueue> configQueue = nullptr;
 static std::shared_ptr<dai::DataInputQueue> controlQueue = nullptr;
 
-std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolution, const std::string& stereoResolution, const std::string& codec, const float fps = 30, const int quality = 90){
+/*
+void trigger() {
+    auto inQ = device.getInputQueue("in")
+    while (true) {
+        buffer = dai.Buffer()
+        buffer.setData([1])
+        inQ.send(buffer)
+        std::this_thread::sleep_for(std::chrono::milliseconds(33.33)); // 33 ms = 1000ms/30
+    }
+}
+*/
+
+std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolution, const std::string& stereoResolution, const std::string& codec, const float fps = 30, const int quality = 90, bool extFSync = false, bool extFSyncMaster = false){
     dai::Pipeline pipeline;
 
     // ToDo: Add support for compessed disparity!
@@ -85,6 +97,14 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     monoRight->setBoardSocket(dai::CameraBoardSocket::RIGHT);
     monoRight->setFps(stereo_fps);
 
+    if (extFSync) {
+        monoLeft->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        monoLeft->initialControl.setExternalTrigger(4, 3);
+
+        monoRight->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        monoRight->initialControl.setExternalTrigger(4, 3);
+    }
+
     ROS_INFO("Mono Resolution: %i", static_cast<int>(monoResolution));
 
     // Configure Camera
@@ -112,6 +132,11 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     colorCam->setResolution(colorResolution);
     colorCam->setFps(fps);
     colorCam->setInterleaved(false);
+
+    if (extFSync) {
+        colorCam->initialControl.setFrameSyncMode(dai::CameraControl::FrameSyncMode::INPUT);
+        colorCam->initialControl.setExternalTrigger(4, 3);
+    }
 
     ROS_INFO("RGB Resolution: %i", static_cast<int>(colorResolution));
     ROS_INFO("FPS: %i", static_cast<int>(fps));
@@ -186,6 +211,36 @@ std::tuple<dai::Pipeline, int, int>  createPipeline(const std::string& rgbResolu
     xoutRight->setStreamName("right");
     xoutRGB->setStreamName("rgb");
     xoutImu->setStreamName("imu");
+
+    if (extFSyncMaster)
+    {
+        auto xin = pipeline.create<dai::node::XLinkIn>();
+        xin->setStreamName("in");
+        auto script = pipeline.create<dai::node::Script>();
+        xin->out.link(script->inputs["in"]);
+        script->setScript(""
+        "import GPIO"
+        "import time"
+        "GPIO_PIN=41 # Trigger"
+        ""
+        "GPIO.setup(GPIO_PIN, GPIO.OUT, GPIO.PULL_DOWN)"
+        ""
+        "def capture():"
+        "    GPIO.write(GPIO_PIN, True)"
+        "    time.sleep(0.001) # 1ms pulse is enough"
+        "    GPIO.write(GPIO_PIN, False)"
+        ""
+        "while True:"
+        "    time.sleep(0.032)"
+        "    capture()"
+        "    node.warn('Trigger successful')"
+        );  // 32ms + 1ms = 33ms alias 30Hz
+        // ToDo: use external trigger and not hardcorded intervall // wait_for_trigger = node.io['in'].get()"
+        
+        auto xout = pipeline.create<dai::node::XLinkOut>();
+        xout->setStreamName("out");
+        script->outputs["out"].link(xout->input);
+    }
     
 
     return std::make_tuple(pipeline, stereoWidth, stereoHeight);
@@ -258,7 +313,10 @@ int main(int argc, char** argv){
     float fps;
     int quality; //between 0 and 100
     bool disparity;
-    bool rectify;   //only relevant for out_LR!
+    bool rectify;
+
+    bool extFSync;
+    bool extFSyncMaster;
 
     int badParams = 0;
 
@@ -280,6 +338,9 @@ int main(int argc, char** argv){
     pnh.param<bool>("disparity", disparity, false);
     pnh.param<bool>("rectify", rectify, false);
 
+    pnh.param<bool>("extFSync", extFSync, false);
+    pnh.param<bool>("extFSyncMaster", extFSyncMaster, false);
+
     camera_info_manager::CameraInfoManager camInfoMang(pnh, tfPrefix, camera_param_uri);
     sensor_msgs::CameraInfo camInfo_ = camInfoMang.getCameraInfo();
 
@@ -289,7 +350,7 @@ int main(int argc, char** argv){
     // Create pipeline
     dai::Pipeline pipeline;
     int width, height;
-    std::tie(pipeline, width, height) = createPipeline(rgbResolution, stereoResolution, codec, fps, quality);
+    std::tie(pipeline, width, height) = createPipeline(rgbResolution, stereoResolution, codec, fps, quality, extFSync, extFSyncMaster);
 
     // Connect to device and start pipeline
     std::shared_ptr<dai::Device> device = nullptr;
