@@ -20,7 +20,7 @@
 static std::shared_ptr<dai::DataInputQueue> configQueue = nullptr;
 static std::shared_ptr<dai::DataInputQueue> controlQueue = nullptr;
 
-dai::Pipeline createPipeline(const std::string& resolution, const std::string& codec, const float fps = 30, const int quality = 90){
+dai::Pipeline createPipeline(const std::string& resolution, const std::string& codec, const std::vector<int>& num_frames_pool, const floa>
     dai::Pipeline pipeline;
 
     auto colorCam = pipeline.create<dai::node::ColorCamera>();
@@ -45,6 +45,10 @@ dai::Pipeline createPipeline(const std::string& resolution, const std::string& c
         colorResolution = dai::ColorCameraProperties::SensorResolution::THE_12_MP; 
     }else if(resolution == "13MP" ){
         colorResolution = dai::ColorCameraProperties::SensorResolution::THE_13_MP; 
+    }else if(resolution == "32MP" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_5312X6000; 
+    }else if(resolution == "4000x3000" ){
+        colorResolution = dai::ColorCameraProperties::SensorResolution::THE_4000X3000; 
     }else{
         ROS_ERROR("Invalid parameter. -> Resolution: %s, Use Default: 4K", resolution.c_str());
         //throw std::runtime_error("Invalid color camera resolution.");
@@ -54,6 +58,7 @@ dai::Pipeline createPipeline(const std::string& resolution, const std::string& c
     colorCam->setBoardSocket(dai::CameraBoardSocket::RGB);
     colorCam->setPreviewSize(300, 300);
     colorCam->setResolution(colorResolution);
+    colorCam->setNumFramesPool(num_frames_pool[0], num_frames_pool[1], num_frames_pool[2], num_frames_pool[3], num_frames_pool[4]);
     colorCam->setFps(fps);
     colorCam->setInterleaved(false);
 
@@ -192,6 +197,7 @@ int main(int argc, char** argv){
     pnh.param<std::string>("device_name", device_name, "");
     pnh.param<std::string>("resolution", resolution, "4K");
     pnh.param<std::string>("codec", codec, "MJPEG");
+    pnh.param<std::vector<int>>("NumFramesPool", num_frames_pool, {3,3,4,4,4});
 
     pnh.param<float>("fps", fps, 30);
     pnh.param<int>("quality", quality, 90);
