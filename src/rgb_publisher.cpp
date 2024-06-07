@@ -20,7 +20,7 @@
 static std::shared_ptr<dai::DataInputQueue> configQueue = nullptr;
 static std::shared_ptr<dai::DataInputQueue> controlQueue = nullptr;
 
-dai::Pipeline createPipeline(const std::string& resolution, const std::string& codec, const std::vector<int>& num_frames_pool, const floa>
+dai::Pipeline createPipeline(const std::string& resolution, const std::string& codec, const std::vector<int>& num_frames_pool, const float fps = 30, const int quality = 90){
     dai::Pipeline pipeline;
 
     auto colorCam = pipeline.create<dai::node::ColorCamera>();
