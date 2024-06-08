@@ -179,6 +179,7 @@ int main(int argc, char** argv){
     std::string device_name;
     std::string resolution;
     std::string codec;
+    std::vector<int> num_frames_pool;
 
     float fps;
     int quality; //between 0 and 100
@@ -206,7 +207,7 @@ int main(int argc, char** argv){
     sensor_msgs::CameraInfo camInfo_ = camInfoMang.getCameraInfo();
 
     // Create pipeline
-    dai::Pipeline pipeline = createPipeline(resolution, codec, fps, quality);
+    dai::Pipeline pipeline = createPipeline(resolution, codec, num_frames_pool, fps, quality);
 
     // Connect to device and start pipeline
     std::shared_ptr<dai::Device> device = nullptr;
