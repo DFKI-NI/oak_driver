@@ -1,0 +1,46 @@
+<?xml version="1.0"?> 
+
+<launch>
+   
+    <arg name="camera_param_uri"      		default="package://valdemar_bringup/params/camera" />
+
+    <group ns="oak_1_max">
+        <arg name="tf_prefix"               default="oak_1_max" />             <!-- Name(TF) of the camera -->
+        <arg name="device_name"             default="1844301091BCDA0E00" />       <!-- IP, Hostname or MX_ID of the camera. Empty for autodetect of only 1 camera! -->
+        
+        <node name="oak_rgb_publisher"      pkg="oak_driver" type="oak_rgb_node" output="screen" required="true">
+            <param name="tf_prefix"         value="$(arg tf_prefix)"/>
+            <param name="camera_param_uri"  value="$(arg camera_param_uri)"/>
+            <param name="device_name"       value="$(arg device_name)" />
+            <param name="resolution"        value="4000x3000" />
+            <!--rosparam param="NumFramesPool"> [2,2,1,1,1] </rosparam-->
+            <param name="fps"               value="5" />
+            <param name="quality"           value="85" />
+            <param name="codec"             value="MJPEG" />
+            <param name="auto_focus_mode"   value="4" />
+            <!-- param name="manual_focus"      value="120" /-->
+            <param name="auto_white_balance_mode"      value="6" />
+        </node>        
+    </group>
+  
+    <group ns="oak_d_pro">
+        <arg name="tf_prefix"               default="oak_d_pro" />             <!-- Name(TF) of the camera -->
+        <arg name="device_name"             default="1844301021B1850E00" />       <!-- IP, Hostname or MX_ID of the camera. Empty for autodetect of only 1 camera! -->
+        
+        <node name="oak_stereo_publisher"      pkg="oak_driver" type="oak_stereo_node" output="screen" required="true">
+            <param name="tf_prefix"         value="$(arg tf_prefix)"/>
+            <param name="camera_param_uri"  value="$(arg camera_param_uri)"/>
+            <param name="device_name"       value="$(arg device_name)" />
+            <param name="rgb_resolution"    value="4K" />
+            <param name="stereo_resolution" value="720p" />
+            <param name="fps"               value="5" />
+            <param name="quality"           value="85" />
+            <param name="codec"             value="MJPEG" />
+            <param name="auto_white_balance_mode"      value="6" />
+            <param name="auto_focus_mode"   value="4" />
+            <param name="extFSyncMaster"    value="false" />
+            <param name="extFSync"          value="false" />
+        </node>        
+    </group>
+
+</launch>
