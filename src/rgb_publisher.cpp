@@ -198,7 +198,7 @@ int main(int argc, char** argv){
     pnh.param<std::string>("device_name", device_name, "");
     pnh.param<std::string>("resolution", resolution, "4K");
     pnh.param<std::string>("codec", codec, "MJPEG");
-    pnh.param<std::vector<int>>("NumFramesPool", num_frames_pool, {3,3,4,4,4});
+    pnh.param<std::vector<int>>("num_frame_pool", num_frames_pool, {3,3,4,4,4});
 
     pnh.param<float>("fps", fps, 30);
     pnh.param<int>("quality", quality, 90);

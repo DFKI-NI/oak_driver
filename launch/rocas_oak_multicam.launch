@@ -13,7 +13,7 @@
             <param name="camera_param_uri"  value="$(arg camera_param_uri)"/>
             <param name="device_name"       value="$(arg device_name)" />
             <param name="resolution"        value="4000x3000" />
-            <!--rosparam param="NumFramesPool"> [2,2,1,1,1] </rosparam-->
+            <!--rosparam param="num_frame_pool"> [2,2,1,1,1] </rosparam-->
             <param name="fps"               value="5" />
             <param name="quality"           value="85" />
             <param name="codec"             value="MJPEG" />
